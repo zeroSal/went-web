@@ -24,12 +24,12 @@ func main() {
 	app.Post("/login", func(ctx iris.Context) {
 		// Get session from security
 		s := session.Start(ctx)
-		
+
 		// In a real app, validate credentials here
 		// For this example, we'll set user data
 		s.Set("user_id", "123")
 		s.Set("username", "john")
-		
+
 		// Set the session cookie that the authenticator expects
 		ctx.SetCookie(&iris.Cookie{
 			Name:     "SESSION_ID",

@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	csrf "github.com/iris-contrib/middleware/csrf"
 	"github.com/kataras/iris/v12"
 	"github.com/kataras/iris/v12/sessions"
-	csrf "github.com/iris-contrib/middleware/csrf"
 	"github.com/zeroSal/went-web/auth"
 	"github.com/zeroSal/went-web/user"
 )
@@ -131,7 +131,7 @@ func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 
 	if config.Session != nil {
 		sessConfig := sessions.Config{
-			Cookie:                     config.Session.Cookie,
+			Cookie:                      config.Session.Cookie,
 			CookieSecureTLS:             config.Session.Secure,
 			AllowReclaim:                config.Session.AllowReclaim,
 			DisableSubdomainPersistence: config.Session.DisableSubdomainPersistence,

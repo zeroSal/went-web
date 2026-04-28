@@ -33,7 +33,7 @@ func main() {
 	// Login with bearer token
 	app.Get("/login-bearer", func(ctx iris.Context) {
 		ctx.JSON(iris.Map{
-			"token": "bearer-token-456",
+			"token":   "bearer-token-456",
 			"message": "Use this token in Authorization header",
 		})
 	})
@@ -51,7 +51,7 @@ func main() {
 		if user, ok := compositeAuth.Authenticate(ctx); ok {
 			ctx.JSON(iris.Map{
 				"authenticated": true,
-				"user":           user,
+				"user":          user,
 			})
 		} else {
 			ctx.JSON(iris.Map{"authenticated": false})

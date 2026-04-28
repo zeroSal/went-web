@@ -13,10 +13,10 @@ type SecurityConfig struct {
 	Firewalls    map[string]FirewallConfig `yaml:"firewalls"`
 	Access       []AccessRule              `yaml:"access"`
 	Session      *SessionConfig            `yaml:"session"`
-	CSRF         *CSRFConfig              `yaml:"csrf"`
+	CSRF         *CSRFConfig               `yaml:"csrf"`
 	Logout       *LogoutConfig             `yaml:"logout"`
-	EntryPoint   *EntryPointConfig        `yaml:"entry_point"`
-	AccessDenied *AccessDeniedConfig      `yaml:"access_denied"`
+	EntryPoint   *EntryPointConfig         `yaml:"entry_point"`
+	AccessDenied *AccessDeniedConfig       `yaml:"access_denied"`
 }
 
 type LogoutConfig struct {
