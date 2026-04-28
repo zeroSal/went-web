@@ -1,0 +1,15 @@
+routes:
+  - path: /login
+    method: [GET, POST]
+    handler: Auth.login
+    require: IS_AUTHENTICATED_ANONYMOUSLY
+
+  - path: /api/data
+    method: [GET]
+    handler: Api.GetData
+    require: AUTH_REQUIRED
+
+  - path: /api/data
+    method: [POST]
+    handler: Api.PostData
+    require: AUTH_REQUIRED

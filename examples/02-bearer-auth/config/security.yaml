@@ -1,0 +1,6 @@
+firewalls:
+  main:
+    pattern: "^/"
+    auth:
+      bearer:
+        enabled: true

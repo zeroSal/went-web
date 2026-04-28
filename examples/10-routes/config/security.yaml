@@ -1,0 +1,13 @@
+firewalls:
+  main:
+    pattern: "^/"
+    auth:
+      jwt:
+        secret: "your-32-byte-secret-key-here!!!!"
+        expiry: 3600
+
+access:
+  - path: /login
+    require: IS_AUTHENTICATED_ANONYMOUSLY
+  - path: /api/*
+    require: AUTH_REQUIRED
