@@ -4,7 +4,7 @@ import "github.com/zeroSal/went-web/controller"
 
 type Iris struct {
 	templateAutoReload bool
-	registry *controller.Registry
+	registry           *controller.Registry
 }
 
 func NewIris(
@@ -13,7 +13,7 @@ func NewIris(
 ) *Iris {
 	return &Iris{
 		templateAutoReload: templateAutoReload,
-		registry: registry,
+		registry:           registry,
 	}
 }
 

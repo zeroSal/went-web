@@ -304,6 +304,11 @@ func (s *Security) handleAccessCheck(ctx iris.Context, require string) bool {
 
 	user, ok := s.authenticator.Authenticate(ctx)
 	if !ok {
+		if s.config.EntryPoint != nil && s.config.EntryPoint.LoginUrl != "" {
+			ctx.Redirect(s.config.EntryPoint.LoginUrl, s.config.EntryPoint.Code)
+			return false
+		}
+
 		ctx.StatusCode(iris.StatusUnauthorized)
 		ctx.StopExecution()
 		return false
