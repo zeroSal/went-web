@@ -2,14 +2,13 @@ firewalls:
   main:
     pattern: "^/"
     auth:
-      jwt:
-        secret: "your-32-byte-secret-key-here!!!!"
-        expiry: 3600
+      cookie:
+        name: "SESSION_ID"
 
 access:
   - path: /login
     require: IS_AUTHENTICATED_ANONYMOUSLY
   - path: /admin
-    require: ROLE_ADMIN
+    require: ROLE_admin
   - path: /*
     require: AUTH_REQUIRED

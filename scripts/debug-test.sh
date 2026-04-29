@@ -1,6 +1,7 @@
 #!/bin/bash
 
-BASE_DIR="/Users/sal/Documents/Developing/went-web"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
 name="01-cookie-auth"
 port=8080
 dir="$BASE_DIR/examples/$name"

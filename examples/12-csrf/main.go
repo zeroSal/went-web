@@ -18,7 +18,7 @@ func main() {
 	}
 
 	// Get CSRF middleware
-	csrfMiddleware := sec.CSRF()
+	csrfMiddleware := sec.GetCSRFMiddleware()
 
 	// Public route - get CSRF token
 	app.Get("/csrf-token", func(ctx iris.Context) {
@@ -55,7 +55,7 @@ func main() {
 
 	// Check if CSRF is enabled
 	app.Get("/check-csrf", func(ctx iris.Context) {
-		if sec.CSRF() != nil {
+		if sec.GetCSRFMiddleware() != nil {
 			ctx.JSON(iris.Map{
 				"csrf_enabled": true,
 				"header_name":  "X-CSRF-Token",

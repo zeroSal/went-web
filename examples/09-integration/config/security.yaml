@@ -2,9 +2,8 @@ firewalls:
   main:
     pattern: "^/"
     auth:
-      jwt:
-        secret: "your-32-byte-secret-key-here!!!!"
-        expiry: 3600
+      bearer:
+        enabled: true
 
 access:
   - path: /login
@@ -12,6 +11,6 @@ access:
   - path: /public/*
     require: IS_AUTHENTICATED_ANONYMOUSLY
   - path: /admin/*
-    require: ROLE_ADMIN
+    require: ROLE_admin
   - path: /*
     require: AUTH_REQUIRED

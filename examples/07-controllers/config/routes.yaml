@@ -1,0 +1,13 @@
+routes:
+  - path: /
+    method: [GET]
+    handler: Home.Index
+  - path: /about
+    method: [GET]
+    handler: Home.About
+  - path: /contact
+    method: [GET]
+    handler: Home.Contact
+  - path: /api/data
+    method: [GET, POST]
+    handler: API.GetData

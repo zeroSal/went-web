@@ -1,9 +1,17 @@
 package auth
 
-import "github.com/kataras/iris/v12"
+import (
+	"github.com/kataras/iris/v12"
+	"github.com/zeroSal/went-web/session"
+	"github.com/zeroSal/went-web/user"
+)
+
+var _ Interface = (*Composite)(nil)
 
 type Composite struct {
-	authenticators []Interface
+	Base
+	authenticators  []Interface
+	sessionProvider session.ProviderInterface
 }
 
 func NewComposite(authenticators ...Interface) *Composite {
@@ -12,22 +20,27 @@ func NewComposite(authenticators ...Interface) *Composite {
 	}
 }
 
-func (c *Composite) Authenticate(ctx iris.Context) (interface{}, bool) {
+func (c *Composite) SetSessionProvider(provider session.ProviderInterface) {
+	c.sessionProvider = provider
 	for _, auth := range c.authenticators {
-		if user, ok := auth.Authenticate(ctx); ok {
-			return user, true
+		auth.SetSessionProvider(provider)
+	}
+}
+
+func (c *Composite) Authenticate(ctx iris.Context) (user.Interface, bool) {
+	for _, auth := range c.authenticators {
+		u, ok := auth.Authenticate(ctx)
+		if ok {
+			if u != nil {
+				return u, true
+			}
+
+			continue
 		}
 	}
 	return nil, false
 }
 
-func (c *Composite) Middleware() iris.Handler {
-	return func(ctx iris.Context) {
-		if _, ok := c.Authenticate(ctx); !ok {
-			ctx.StatusCode(iris.StatusUnauthorized)
-			ctx.StopExecution()
-			return
-		}
-		ctx.Next()
-	}
+func (b *Composite) Middleware() iris.Handler {
+	return b.Base.Middleware(b.Authenticate)
 }

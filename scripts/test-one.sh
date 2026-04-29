@@ -5,7 +5,8 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-BASE_DIR="/Users/sal/Documents/Developing/went-web"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${YELLOW}=== Testing went-web examples ===${NC}"
 

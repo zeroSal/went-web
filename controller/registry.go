@@ -26,19 +26,11 @@ func (r *Registry) Register(c Interface) {
 	r.controllers = append(r.controllers, c)
 }
 
-func (r *Registry) Routes() []Route {
-	var routes []Route
-	for _, ctrl := range r.controllers {
-		cfg := ctrl.GetConfiguration()
-		routes = append(routes, cfg.Routes...)
-	}
-	return routes
-}
-
 func (r *Registry) Handlers() []Handler {
 	var handlers []Handler
 	for _, ctrl := range r.controllers {
 		cfg := ctrl.GetConfiguration()
+
 		ctrlVal := reflect.ValueOf(ctrl)
 		ctrlType := reflect.TypeOf(ctrl)
 
@@ -51,15 +43,15 @@ func (r *Registry) Handlers() []Handler {
 
 		for i := 0; i < methodType.NumMethod(); i++ {
 			m := methodType.Method(i)
-			if m.Type.NumIn() != 2 {
-				continue
-			}
 			if m.Name == "GetConfiguration" {
 				continue
 			}
 
-			// Check if second parameter is iris.Context by string comparison
-			ctxType := reflect.TypeOf((*iris.Context)(nil)).Elem()
+			if m.Type.NumIn() != 2 {
+				continue
+			}
+
+			ctxType := reflect.TypeFor[iris.Context]()
 			if m.Type.In(1).String() != ctxType.String() {
 				continue
 			}

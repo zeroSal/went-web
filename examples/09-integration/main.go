@@ -1,52 +1,83 @@
 package main
 
 import (
-	"fmt"
 	"log"
+	"slices"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/kataras/iris/v12"
-	"github.com/zeroSal/went-web/auth"
 	"github.com/zeroSal/went-web/security"
+	"github.com/zeroSal/went-web/session"
 	"github.com/zeroSal/went-web/user"
 )
+
+// User implements user.Interface
+type User struct {
+	ID       any
+	Username string
+	Roles    []string
+}
+
+func (u *User) GetID() any {
+	return u.ID
+}
+
+func (u *User) GetUsername() string {
+	return u.Username
+}
+
+func (u *User) GetRoles() []string {
+	return u.Roles
+}
+
+func (u *User) HasRole(role string) bool {
+	return slices.Contains(u.Roles, role)
+}
 
 // MockUserProvider for this example
 type MockUserProvider struct{}
 
-func (p *MockUserProvider) LoadByUsername(username string) (user.Interface, error) {
-	users := map[string]user.Claims{
-		"john": {
-			"sub":      "1",
-			"username": "john",
-			"roles":    []string{"user"},
-		},
-		"admin": {
-			"sub":      "2",
-			"username": "admin",
-			"roles":    []string{"admin", "user"},
-		},
+func (p *MockUserProvider) Load(credential any) (user.Interface, error) {
+	// Check by username
+	if username, ok := credential.(string); ok {
+		users := map[string]*User{
+			"john": {
+				ID:       "1",
+				Username: "john",
+				Roles:    []string{"user"},
+			},
+			"admin": {
+				ID:       "2",
+				Username: "admin",
+				Roles:    []string{"admin", "user"},
+			},
+		}
+		if u, ok := users[username]; ok {
+			return u, nil
+		}
+
+		// Check by session token
+		tokens := map[string]*User{
+			"token-john-123": {
+				ID:       "1",
+				Username: "john",
+				Roles:    []string{"user"},
+			},
+			"token-admin-456": {
+				ID:       "2",
+				Username: "admin",
+				Roles:    []string{"admin", "user"},
+			},
+		}
+		if u, ok := tokens[username]; ok {
+			return u, nil
+		}
 	}
 
-	if claims, ok := users[username]; ok {
-		return claims, nil
-	}
-	return nil, fmt.Errorf("user not found")
+	return nil, nil
 }
 
-func (p *MockUserProvider) LoadByID(id any) (user.Interface, error) {
-	if id == "1" {
-		return user.Claims{
-			"sub":      "1",
-			"username": "john",
-			"roles":    []string{"user"},
-		}, nil
-	}
-	return nil, fmt.Errorf("user not found")
-}
-
-// Example 9: Complete Integration
+// Example 9: Complete Integration - Complete Test Cases
 func main() {
 	app := iris.New()
 
@@ -56,17 +87,14 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Set user provider
-	sec.SetUserProvider(&MockUserProvider{})
+	// Set session provider
+	sec.SetSessionProvider(&MockUserProvider{})
 
-	// Set role checker
-	sec.SetRoleChecker(user.RoleCheckerFunc(
-		func(ctx iris.Context, u user.Interface, role string) bool {
-			return u.HasRole(role)
-		},
-	))
+	// ========================================
+	// AUTHENTICATION SUCCESS
+	// ========================================
 
-	// Login endpoint
+	// Login endpoint - returns token (Authentication Success)
 	app.Post("/login", func(ctx iris.Context) {
 		username := ctx.PostValue("username")
 		password := ctx.PostValue("password")
@@ -74,33 +102,62 @@ func main() {
 		// Simple check
 		if (username == "john" || username == "admin") && password == "secret" {
 			// Get user
-			u, _ := sec.UserProvider().LoadByUsername(username)
+			u, _ := (&MockUserProvider{}).Load(username)
 
-			// Generate JWT
-			jwtAuth := sec.Authenticator().(*auth.JWT)
-			claims := jwt.MapClaims{
-				"sub":      u.GetID(),
-				"username": u.GetUsername(),
-				"roles":    u.GetRoles(),
-			}
-
-			token, err := jwtAuth.GenerateToken(claims)
-			if err != nil {
-				ctx.StatusCode(500)
-				ctx.JSON(iris.Map{"error": "Failed to generate token"})
-				return
+			// Return appropriate token based on user
+			var token string
+			if username == "john" {
+				token = "token-john-123"
+			} else {
+				token = "token-admin-456"
 			}
 
 			ctx.JSON(iris.Map{
 				"token":    token,
 				"username": u.GetUsername(),
 				"roles":    u.GetRoles(),
+				"message":  "Login successful",
 			})
 		} else {
 			ctx.StatusCode(401)
 			ctx.JSON(iris.Map{"error": "Invalid credentials"})
 		}
 	})
+
+	// Login via GET for easier testing (Authentication Success)
+	app.Get("/login/{username}", func(ctx iris.Context) {
+		username := ctx.Params().Get("username")
+
+		u, err := (&MockUserProvider{}).Load(username)
+		if err != nil {
+			ctx.StatusCode(404)
+			ctx.JSON(iris.Map{"error": "User not found"})
+			return
+		}
+
+		ctx.JSON(iris.Map{
+			"username": u.GetUsername(),
+			"roles":    u.GetRoles(),
+			"message":  "Login successful (GET)",
+		})
+	})
+
+	// ========================================
+	// AUTHENTICATION FAILURE
+	// ========================================
+
+	// Test with invalid credentials (Authentication Failure)
+	app.Get("/login/invalid", func(ctx iris.Context) {
+		ctx.StatusCode(401)
+		ctx.JSON(iris.Map{
+			"error":   "Invalid credentials",
+			"message": "Authentication failed",
+		})
+	})
+
+	// ========================================
+	// PUBLIC ENDPOINTS
+	// ========================================
 
 	// Public endpoint
 	app.Get("/public/info", func(ctx iris.Context) {
@@ -110,48 +167,91 @@ func main() {
 		})
 	})
 
-	// Protected endpoint
+	// ========================================
+	// PROTECTED ENDPOINTS - ACCESS GRANTED
+	// ========================================
+
+	// Protected endpoint - Access Granted (with valid Bearer token)
 	app.Get("/api/profile", sec.Middleware(), func(ctx iris.Context) {
-		// Get user from JWT claims
-		if claims, ok := sec.Authenticator().(*auth.JWT).Authenticate(ctx); ok {
-			mapClaims := claims.(jwt.MapClaims)
-			ctx.JSON(iris.Map{
-				"user_id":  mapClaims["sub"],
-				"username": mapClaims["username"],
-			})
+		// Get user from authenticator
+		if auth := sec.Authenticator(); auth != nil {
+			if u, ok := auth.Authenticate(ctx); ok && u != nil {
+				ctx.JSON(iris.Map{
+					"user_id":  u.GetID(),
+					"username": u.GetUsername(),
+					"roles":    u.GetRoles(),
+					"message":  "Access granted to profile",
+				})
+				return
+			}
 		}
+		ctx.JSON(iris.Map{"message": "Your Profile Page"})
 	})
 
-	// Admin only endpoint
+	// Admin only endpoint - Access Granted (with admin token)
 	app.Get("/admin/users", sec.Middleware(), func(ctx iris.Context) {
 		// Check if user has admin role
-		if claims, ok := sec.Authenticator().(*auth.JWT).Authenticate(ctx); ok {
-			userClaims := claims.(jwt.MapClaims)
-			roles := userClaims["roles"].([]interface{})
-
-			hasAdmin := false
-			for _, r := range roles {
-				if r == "admin" {
-					hasAdmin = true
-					break
+		if auth := sec.Authenticator(); auth != nil {
+			if u, ok := auth.Authenticate(ctx); ok && u != nil {
+				if u.HasRole("admin") || u.HasRole("ROLE_admin") {
+					ctx.JSON(iris.Map{
+						"users":   []string{"john", "admin"},
+						"count":   2,
+						"message": "Access granted to admin endpoint",
+					})
+				} else {
+					ctx.StatusCode(403)
+					ctx.JSON(iris.Map{"error": "Forbidden: Admin access required"})
 				}
-			}
-
-			if hasAdmin {
-				ctx.JSON(iris.Map{
-					"users": []string{"john", "admin"},
-					"count": 2,
-				})
-			} else {
-				ctx.StatusCode(403)
-				ctx.JSON(iris.Map{"error": "Forbidden: Admin access required"})
+				return
 			}
 		}
+		ctx.StatusCode(401)
+		ctx.JSON(iris.Map{"error": "Unauthorized"})
 	})
 
-	log.Println("Server starting on :8089")
-	log.Println("Login: curl -X POST <http://localhost:8089/login> -d 'username=admin&password=secret'")
-	log.Println("Profile: curl -H 'Authorization: Bearer <token>' <http://localhost:8089/api/profile>")
-	log.Println("Admin: curl -H 'Authorization: Bearer <token>' <http://localhost:8089/admin/users>")
+	// ========================================
+	// PROTECTED ENDPOINTS - ACCESS DENIED
+	// ========================================
+	// Test with no auth: curl <http://localhost:8089/api/profile> (401)
+	// Test with invalid auth: curl -H "Authorization: Bearer invalid" <http://localhost:8089/api/profile> (401)
+	// Test non-admin: curl -H "Authorization: Bearer token-john-123" <http://localhost:8089/admin/users> (403)
+
+	// ========================================
+	// TEST INSTRUCTIONS
+	// ========================================
+	log.Println("==========================================")
+	log.Println("Integration Example - Running on :8089")
+	log.Println("==========================================")
+	log.Println("")
+	log.Println("AUTHENTICATION SUCCESS:")
+	log.Println("  curl -X POST -d 'username=john&password=secret' <http://localhost:8089/login>")
+	log.Println("  curl -X POST -d 'username=admin&password=secret' <http://localhost:8089/login>")
+	log.Println("")
+	log.Println("AUTHENTICATION FAILURE:")
+	log.Println("  curl -X POST -d 'username=invalid&password=wrong' <http://localhost:8089/login>")
+	log.Println("  curl <http://localhost:8089/login/invalid>")
+	log.Println("")
+	log.Println("PUBLIC ENDPOINT:")
+	log.Println("  curl <http://localhost:8089/public/info>")
+	log.Println("")
+	log.Println("PROTECTED ROUTE - ACCESS GRANTED:")
+	log.Println("  curl -H 'Authorization: Bearer token-john-123' <http://localhost:8089/api/profile>")
+	log.Println("")
+	log.Println("PROTECTED ROUTE - ACCESS DENIED:")
+	log.Println("  curl <http://localhost:8089/api/profile> (no token - 401)")
+	log.Println("  curl -H 'Authorization: Bearer invalid' <http://localhost:8089/api/profile> (invalid - 401)")
+	log.Println("")
+	log.Println("ADMIN ROUTE - ACCESS GRANTED:")
+	log.Println("  curl -H 'Authorization: Bearer token-admin-456' <http://localhost:8089/admin/users>")
+	log.Println("")
+	log.Println("ADMIN ROUTE - ACCESS DENIED (Forbidden):")
+	log.Println("  curl -H 'Authorization: Bearer token-john-123' <http://localhost:8089/admin/users>")
+	log.Println("==========================================")
+
 	app.Listen(":8089")
 }
+
+// Ensure interfaces are used
+var _ session.ProviderInterface = (*MockUserProvider)(nil)
+var _ user.Interface = (*User)(nil)

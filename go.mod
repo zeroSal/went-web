@@ -3,7 +3,6 @@ module github.com/zeroSal/went-web
 go 1.25
 
 require (
-	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/iris-contrib/middleware/csrf v0.0.0-20251225090426-92c6f28facda
 	github.com/kataras/iris/v12 v12.2.11
 	gopkg.in/yaml.v3 v3.0.1

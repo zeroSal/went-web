@@ -2,6 +2,7 @@ package security
 
 import (
 	"embed"
+	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -11,43 +12,9 @@ import (
 	"github.com/kataras/iris/v12"
 	"github.com/kataras/iris/v12/sessions"
 	"github.com/zeroSal/went-web/auth"
-	"github.com/zeroSal/went-web/user"
+	"github.com/zeroSal/went-web/session"
 )
 
-// HandlerRegistry maps controller/method combinations to Iris handlers
-type HandlerRegistry map[string]map[string]iris.Handler
-
-// NewHandlerRegistry creates a new empty HandlerRegistry
-func NewHandlerRegistry() HandlerRegistry {
-	return make(HandlerRegistry)
-}
-
-// Register adds a handler for a controller and method
-func (r HandlerRegistry) Register(controller string, method string, handler iris.Handler) {
-	if r[controller] == nil {
-		r[controller] = make(map[string]iris.Handler)
-	}
-	r[controller][method] = handler
-}
-
-// Get retrieves a handler for a controller and method
-func (r HandlerRegistry) Get(controller, method string) iris.Handler {
-	if r[controller] != nil {
-		return r[controller][method]
-	}
-	return nil
-}
-
-// Range iterates over all registered handlers
-func (r HandlerRegistry) Range(fn func(controller, method string, handler iris.Handler)) {
-	for controller, methods := range r {
-		for method, handler := range methods {
-			fn(controller, method, handler)
-		}
-	}
-}
-
-// Security manages authentication, authorization, and route security
 type Security struct {
 	config          *SecurityConfig
 	routes          []RouteConfig
@@ -56,11 +23,9 @@ type Security struct {
 	handlerRegistry HandlerRegistry
 	session         *sessions.Sessions
 	csrf            iris.Handler
-	userProvider    user.Provider
-	roleChecker     user.RoleChecker
+	sessionProvider session.ProviderInterface
 }
 
-// NewSecurity creates a new Security instance from a config file path
 func NewSecurity(configPath string) (*Security, error) {
 	config, err := LoadSecurityConfig(configPath)
 	if err != nil {
@@ -69,7 +34,6 @@ func NewSecurity(configPath string) (*Security, error) {
 	return newSecurityFromConfig(config)
 }
 
-// NewSecurityFromEmbed creates a new Security instance from an embedded filesystem
 func NewSecurityFromEmbed(efs embed.FS, path string) (*Security, error) {
 	data, err := efs.ReadFile(path)
 	if err != nil {
@@ -82,12 +46,10 @@ func NewSecurityFromEmbed(efs embed.FS, path string) (*Security, error) {
 	return newSecurityFromConfig(config)
 }
 
-// NewSecurityFromConfig creates a new Security instance from a config struct
 func NewSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 	return newSecurityFromConfig(config)
 }
 
-// newSecurityFromConfig builds a Security instance from config
 func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 	auths := []auth.Interface{}
 
@@ -95,14 +57,11 @@ func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 		if fw.Auth.Cookie != nil {
 			auths = append(auths, auth.NewCookie(fw.Auth.Cookie.Name))
 		}
+
 		if fw.Auth.Bearer != nil && fw.Auth.Bearer.Enabled {
 			auths = append(auths, auth.NewBearer())
 		}
-		if fw.Auth.JWT != nil {
-			auths = append(auths, auth.NewJWT([]byte(fw.Auth.JWT.Secret), time.Duration(fw.Auth.JWT.Expiry.Duration)*time.Second))
-		}
 
-		// If session is configured, add cookie auth for session cookie
 		if config.Session != nil && config.Session.Cookie != "" {
 			auths = append(auths, auth.NewCookie(config.Session.Cookie))
 		}
@@ -145,10 +104,9 @@ func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 	if config.CSRF != nil && config.CSRF.Enabled {
 		csrfKey := config.CSRF.Secret
 		if csrfKey == "" {
-			csrfKey = "32-byte-long-auth-key-here!!!!"
+			return nil, errors.New("CSRF secret is required")
 		}
 
-		// Build cookie options
 		var cookieOpts []csrf.CookieOption
 		if config.CSRF.Secure {
 			cookieOpts = append(cookieOpts, csrf.Secure(true))
@@ -164,7 +122,6 @@ func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 			}
 		}
 
-		// Build options for New() to support FieldName and HeaderName
 		opts := csrf.Options{
 			FieldName:     config.CSRF.FieldName,
 			RequestHeader: config.CSRF.HeaderName,
@@ -182,31 +139,36 @@ func newSecurityFromConfig(config *SecurityConfig) (*Security, error) {
 	return sec, nil
 }
 
-// SetUserProvider sets the user provider for loading users
-func (s *Security) SetUserProvider(provider user.Provider) {
-	s.userProvider = provider
+func (s *Security) SetSessionProvider(provider session.ProviderInterface) {
+	s.sessionProvider = provider
+	if s.authenticator != nil {
+		if p, ok := s.authenticator.(interface {
+			SetUserProvider(session.ProviderInterface)
+		}); ok {
+			p.SetUserProvider(provider)
+		}
+	}
 }
 
-// SetRoleChecker sets the role checker for authorization
-func (s *Security) SetRoleChecker(checker user.RoleChecker) {
-	s.roleChecker = checker
+func (s *Security) GetUserProvider() session.ProviderInterface {
+	return s.sessionProvider
 }
 
-// UserProvider returns the current user provider
-func (s *Security) UserProvider() user.Provider {
-	return s.userProvider
-}
-
-// RoleChecker returns the current role checker
-func (s *Security) RoleChecker() user.RoleChecker {
-	return s.roleChecker
-}
-
-// Middleware returns the main security middleware
 func (s *Security) Middleware() iris.Handler {
 	return func(ctx iris.Context) {
 		path := ctx.Path()
 		method := ctx.Method()
+
+		for _, rule := range s.config.Access {
+			if !matchesPath(rule.Path, path, method) {
+				continue
+			}
+
+			if s.handleAccessCheck(ctx, rule.Require) {
+				ctx.Next()
+			}
+			return
+		}
 
 		isPublic := false
 		for _, pattern := range s.publicPatterns {
@@ -216,34 +178,29 @@ func (s *Security) Middleware() iris.Handler {
 			}
 		}
 
-		if !isPublic && s.authenticator != nil {
-			if _, ok := s.authenticator.Authenticate(ctx); !ok {
-				ctx.StatusCode(iris.StatusUnauthorized)
-				ctx.StopExecution()
-				return
+		if !isPublic {
+			if s.handleAccessCheck(ctx, "AUTH_REQUIRED") {
+				ctx.Next()
 			}
+			return
 		}
 
 		ctx.Next()
 	}
 }
 
-// Authenticator returns the current authenticator
 func (s *Security) Authenticator() auth.Interface {
 	return s.authenticator
 }
 
-// Session returns the session manager
-func (s *Security) Session() *sessions.Sessions {
+func (s *Security) GetSessionManager() *sessions.Sessions {
 	return s.session
 }
 
-// CSRF returns the CSRF middleware
-func (s *Security) CSRF() iris.Handler {
+func (s *Security) GetCSRFMiddleware() iris.Handler {
 	return s.csrf
 }
 
-// SetRoutes sets the route configurations
 func (s *Security) SetRoutes(routes []RouteConfig) {
 	s.routes = routes
 
@@ -254,12 +211,10 @@ func (s *Security) SetRoutes(routes []RouteConfig) {
 	}
 }
 
-// RegisterHandler registers a handler for a controller and method
 func (s *Security) RegisterHandler(controller, method string, handler iris.Handler) {
 	s.handlerRegistry.Register(controller, method, handler)
 }
 
-// RegisterRoutes registers all configured routes to the Iris application
 func (s *Security) RegisterRoutes(app *iris.Application) {
 	for _, route := range s.routes {
 		middleware := s.buildMiddleware(route.Require)
@@ -316,7 +271,6 @@ func (s *Security) RegisterRoutes(app *iris.Application) {
 	}
 }
 
-// resolveHandler looks up a handler by "Controller.Method" string
 func (s *Security) resolveHandler(handler string) iris.Handler {
 	parts := strings.Split(handler, ".")
 	if len(parts) != 2 {
@@ -339,24 +293,46 @@ func (s *Security) resolveHandler(handler string) iris.Handler {
 	return nil
 }
 
-// buildMiddleware creates middleware for a specific require rule
+func (s *Security) handleAccessCheck(ctx iris.Context, require string) bool {
+	if require == "IS_AUTHENTICATED_ANONYMOUSLY" {
+		return true
+	}
+
+	if s.authenticator == nil {
+		return true
+	}
+
+	user, ok := s.authenticator.Authenticate(ctx)
+	if !ok {
+		ctx.StatusCode(iris.StatusUnauthorized)
+		ctx.StopExecution()
+		return false
+	}
+
+	if require == "AUTH_REQUIRED" {
+		return true
+	}
+
+	if strings.HasPrefix(require, "ROLE_") {
+		if !user.HasRole(require) {
+			ctx.StatusCode(iris.StatusForbidden)
+			ctx.StopExecution()
+			return false
+		}
+		return true
+	}
+
+	return true
+}
+
 func (s *Security) buildMiddleware(require string) iris.Handler {
 	return func(ctx iris.Context) {
-		isPublic := require == "IS_AUTHENTICATED_ANONYMOUSLY"
-
-		if !isPublic && s.authenticator != nil {
-			if _, ok := s.authenticator.Authenticate(ctx); !ok {
-				ctx.StatusCode(iris.StatusUnauthorized)
-				ctx.StopExecution()
-				return
-			}
+		if s.handleAccessCheck(ctx, require) {
+			ctx.Next()
 		}
-
-		ctx.Next()
 	}
 }
 
-// matchesPath checks if a path matches a pattern with optional method prefix
 func matchesPath(pattern, path, method string) bool {
 	if strings.Contains(pattern, " ") {
 		parts := strings.SplitN(pattern, " ", 2)

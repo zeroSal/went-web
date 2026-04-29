@@ -16,11 +16,6 @@ type HomeController struct {
 func (c *HomeController) GetConfiguration() controller.Configuration {
 	return controller.Configuration{
 		Name: "Home",
-		Routes: []controller.Route{
-			{Path: "/", Method: "GET", MethodName: "Index", Handler: c.Index},
-			{Path: "/about", Method: "GET", MethodName: "About", Handler: c.About},
-			{Path: "/contact", Method: "GET", MethodName: "Contact", Handler: c.Contact},
-		},
 	}
 }
 
@@ -44,10 +39,6 @@ type APIController struct {
 func (c *APIController) GetConfiguration() controller.Configuration {
 	return controller.Configuration{
 		Name: "API",
-		Routes: []controller.Route{
-			{Path: "/api/data", Method: "GET", MethodName: "GetData", Handler: c.GetData},
-			{Path: "/api/data", Method: "POST", MethodName: "PostData", Handler: c.PostData},
-		},
 	}
 }
 
@@ -59,15 +50,14 @@ func (c *APIController) PostData(ctx iris.Context) {
 	ctx.JSON(iris.Map{"status": "created"})
 }
 
-// Example 7: Controllers with Registry
+// Example 7: Controllers with Routes YAML
 func main() {
 	app := iris.New()
 
-	// Create security (basic)
+	// Load security config (for routes)
 	sec, err := security.NewSecurity("config/security.yaml")
 	if err != nil {
-		// If no security.yaml, create minimal config
-		sec = nil
+		log.Fatal(err)
 	}
 
 	// Create registry and register controllers
@@ -75,23 +65,20 @@ func main() {
 	registry.Register(&HomeController{})
 	registry.Register(&APIController{})
 
-	// Register handlers with security if available
-	if sec != nil {
-		for _, h := range registry.Handlers() {
-			sec.RegisterHandler(h.Controller, h.Method, h.Handler)
-		}
+	// Register handlers with security
+	for _, h := range registry.Handlers() {
+		sec.RegisterHandler(h.Controller, h.Method, h.Handler)
 	}
 
-	// Register routes manually (without security)
-	homeConfig := (&HomeController{}).GetConfiguration()
-	for _, route := range homeConfig.Routes {
-		app.Handle(route.Method, route.Path, route.Handler)
+	// Load routes config
+	routes, err := security.LoadRoutesConfig("config/routes.yaml")
+	if err != nil {
+		log.Fatal(err)
 	}
+	sec.SetRoutes(routes)
 
-	apiConfig := (&APIController{}).GetConfiguration()
-	for _, route := range apiConfig.Routes {
-		app.Handle(route.Method, route.Path, route.Handler)
-	}
+	// Register routes from YAML
+	sec.RegisterRoutes(app)
 
 	log.Println("Server starting on :8086")
 	log.Println("Test: curl <http://localhost:8086/>")

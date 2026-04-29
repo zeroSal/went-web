@@ -5,7 +5,8 @@ RED='\033[0;31m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-BASE_DIR="/Users/sal/Documents/Developing/went-web"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BASE_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo -e "${YELLOW}=== Testing went-web examples ===${NC}"
 
@@ -23,7 +24,7 @@ kill_port() {
     fi
 }
 
-EXAMPLES="01-cookie-auth:8080 02-bearer-auth:8081 03-jwt-auth:8082 04-composite-auth:8083 05-user-claims:8084 06-user-provider:8085 07-controllers:8086 08-security-full:8088 09-integration:8089 10-routes:8090 11-session:8091 12-csrf:8092"
+EXAMPLES="01-cookie-auth:8080 02-bearer-auth:8081 04-composite-auth:8083 06-user-provider:8085 07-controllers:8086 08-security-full:8088 09-integration:8089 10-routes:8090 11-session:8091 12-csrf:8092"
 
 for pair in $EXAMPLES; do
     name=$(echo "$pair" | cut -d: -f1)
@@ -101,32 +102,11 @@ for pair in $EXAMPLES; do
             echo "  Bearer: $resp"
             echo "$resp" | grep -q "Protected" && echo -e "${GREEN}✓ Bearer OK${NC}" || { echo -e "${RED}✗ Bearer FAIL${NC}"; FAILED=1; }
             ;;
-        03-jwt-auth)
-            echo "Testing JWT auth..."
-            resp=$(curl -s --max-time 5 -X POST "http://127.0.0.1:$port/login" -d "username=admin&password=secret")
-            echo "  Login: $resp"
-            TOKEN=$(echo "$resp" | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
-            if [ -n "$TOKEN" ]; then
-                echo -e "${GREEN}✓ Got token${NC}"
-                resp=$(curl -s --max-time 5 -H "Authorization: Bearer $TOKEN" "http://127.0.0.1:$port/api/data")
-                echo "  JWT: $resp"
-                echo "$resp" | grep -q "Protected" && echo -e "${GREEN}✓ JWT OK${NC}" || { echo -e "${RED}✗ JWT FAIL${NC}"; FAILED=1; }
-            else
-                echo -e "${RED}✗ Failed to get token${NC}"
-                FAILED=1
-            fi
-            ;;
         04-composite-auth)
             echo "Testing composite auth..."
             resp=$(curl -s --max-time 5 --cookie "SESSION_ID=cookie-session-123" "http://127.0.0.1:$port/api/data")
             echo "  Cookie: $resp"
             echo "$resp" | grep -q "authenticated" && echo -e "${GREEN}✓ Cookie OK${NC}" || { echo -e "${RED}✗ Cookie FAIL${NC}"; FAILED=1; }
-            ;;
-        05-user-claims)
-            echo "Testing user claims..."
-            resp=$(curl -s --max-time 5 "http://127.0.0.1:$port/user/info")
-            echo "  User info: $resp"
-            echo "$resp" | grep -q "User ID" && echo -e "${GREEN}✓ User info OK${NC}" || { echo -e "${RED}✗ User info FAIL${NC}"; FAILED=1; }
             ;;
         06-user-provider)
             echo "Testing user provider..."
@@ -188,7 +168,7 @@ for pair in $EXAMPLES; do
             resp=$(curl -s --max-time 5 -X POST "http://127.0.0.1:$port/login" -c /tmp/session-cookies.txt)
             echo "  Login: $resp"
             echo "$resp" | grep -q "Logged in" && echo -e "${GREEN}✓ Login OK${NC}" || { echo -e "${RED}✗ Login FAIL${NC}"; FAILED=1; }
-            
+
             # Access profile with saved cookies
             resp=$(curl -s --max-time 5 -b /tmp/session-cookies.txt "http://127.0.0.1:$port/profile")
             echo "  Profile: $resp"
