@@ -306,6 +306,7 @@ func (s *Security) handleAccessCheck(ctx iris.Context, require string) bool {
 	if !ok {
 		if s.config.EntryPoint != nil && s.config.EntryPoint.LoginUrl != "" {
 			ctx.Redirect(s.config.EntryPoint.LoginUrl, s.config.EntryPoint.Code)
+			ctx.StopExecution()
 			return false
 		}
 
