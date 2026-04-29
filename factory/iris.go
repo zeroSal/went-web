@@ -6,6 +6,7 @@ import (
 	"io/fs"
 
 	"github.com/kataras/iris/v12"
+	"github.com/zeroSal/went-web/config"
 	"github.com/zeroSal/went-web/controller"
 	"github.com/zeroSal/went-web/security"
 	"github.com/zeroSal/went-web/session"
@@ -15,8 +16,7 @@ func IrisFactory(
 	embedFS embed.FS,
 	sec *security.Security,
 	sessionProvider session.ProviderInterface,
-	registry *controller.Registry,
-	templateAutoReload bool,
+	configuration *config.Iris,
 ) (*iris.Application, error) {
 	app := iris.New()
 
@@ -26,7 +26,7 @@ func IrisFactory(
 	}
 
 	engine := iris.Django(templatesFS, ".html.django")
-	if templateAutoReload {
+	if configuration.IsTemplateAutoReload() {
 		engine.Reload(true)
 	}
 
@@ -44,12 +44,12 @@ func IrisFactory(
 
 	sec.SetSessionProvider(sessionProvider)
 
-	handlers := registry.Handlers()
+	handlers := configuration.GetRegistry().Handlers()
 	if len(handlers) == 0 {
 		return nil, fmt.Errorf("no handlers found in controllers")
 	}
 
-	registerHandlers(registry, sec)
+	registerHandlers(configuration.GetRegistry(), sec)
 	app.Use(sec.Middleware())
 	sec.RegisterRoutes(app)
 
