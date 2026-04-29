@@ -11,7 +11,7 @@ import (
 	"github.com/zeroSal/went-web/session"
 )
 
-func WebFactory(
+func IrisFactory(
 	embedFS embed.FS,
 	sec *security.Security,
 	sessionProvider session.ProviderInterface,
