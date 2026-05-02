@@ -1,11 +1,7 @@
 package controller
 
-type Base struct{}
-
-type Configuration struct {
-	Name string
-}
+import "github.com/kataras/iris/v12"
 
 type Interface interface {
-	GetConfiguration() Configuration
+	Register(app *iris.Application)
 }
